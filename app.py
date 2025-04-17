@@ -51,73 +51,94 @@ tables = [
     ("Distance Data", "Sheet5", distance_data)
 ]
 
-max_tranport_cap = 2000000 
+data = {
+    'City': distance_data['Destination'],
+    'Population': city_demand['Doses Needed'],
+    'Infected': [0,0,0,0,0,0],
+    'Uninfected': city_demand['Doses Needed'],
+    'Total_Vaccinated': [0,0,0,0,0,0]
+}
+
+# Create Table
+updated_df = pd.DataFrame(data)
+
+max_tranport_cap = sum(mode_data['Max Capacity'])
 
 # Optimization Model
 def run_optimization():
-    prob = pulp.LpProblem("Vaccine_Delivery", pulp.LpMaximize)
-
-    #dicition var for Transport_(city, mode)
-    transport_vars = pulp.LpVariable.dicts("Transport",
-                                         ((city, mode) for city in city_demand['City'] 
-                                          for mode in mode_data['Mode']),
-                                         lowBound=0, cat='Integer')
-    print("transport_vars ====>",transport_vars)
-    
-    #dictionary for priority score city wise 
-    priority_scores = dict(zip(city_demand['City'], city_demand['Infection rate']))
-    print("priority_scores ======>",priority_scores)
-
-    weight_mapping = {1: 0.8, 2: 0.4, 3: 0.1}
-    #objective function
-    prob += pulp.lpSum([transport_vars[(city, mode)] * mode_data[mode_data['Mode'] == mode]['Capacity'].values[0] *
-                        weight_mapping[city_demand[city_demand['City'] == city]['Infection rate'].values[0]]
-                       for city in city_demand['City'] 
-                       for mode in mode_data['Mode']])
-    print("third =====>",pulp.lpSum([transport_vars[(city, mode)] * mode_data[mode_data['Mode'] == mode]['Capacity'].values[0] *
-                        weight_mapping[city_demand[city_demand['City'] == city]['Infection rate'].values[0]]
-                       for city in city_demand['City'] 
-                       for mode in mode_data['Mode']]))
-    
-    #vehicle constraint
-    for mode in mode_data['Mode']:
-        prob += pulp.lpSum([transport_vars[(city, mode)] 
-                            for city in city_demand['City']]) <= mode_data[mode_data['Mode'] == mode]['Number of Vehicles'].values[0]
-        print("forth===>",pulp.lpSum([transport_vars[(city, mode)] 
-                            for city in city_demand['City']]) <= mode_data[mode_data['Mode'] == mode]['Number of Vehicles'].values[0])
-
-    #max tranportation limit
-    prob += pulp.lpSum([transport_vars[(city, mode)] * mode_data[mode_data['Mode'] == mode]['Capacity'].values[0]
-                            for city in city_demand['City']
-                            for mode in mode_data['Mode']]) <= max_tranport_cap
-    print("fifth =====>",pulp.lpSum([transport_vars[(city, mode)] * mode_data[mode_data['Mode'] == mode]['Capacity'].values[0]
-                            for city in city_demand['City']
-                            for mode in mode_data['Mode']]) <= max_tranport_cap)
-    
-    #city demand constraint
-    for city in city_demand['City']:
-        prob += pulp.lpSum([transport_vars[(city, mode)] *
-                            mode_data[mode_data['Mode'] == mode]['Capacity'].values[0]
-                                for mode in mode_data['Mode']]) <= city_demand[city_demand['City'] == city]['Doses Needed'].values[0]
-        print(pulp.lpSum([transport_vars[(city, mode)] *
-                            mode_data[mode_data['Mode'] == mode]['Capacity'].values[0]
-                                for mode in mode_data['Mode']]) <= city_demand[city_demand['City'] == city]['Doses Needed'].values[0])
-        
-    prob.solve()
-
     results = []
-    for city in city_demand['City']:
+    day = 1
+
+    while((sum(updated_df['Uninfected'])>0)):
+        prob = pulp.LpProblem("Vaccine_Delivery", pulp.LpMaximize)
+        #dicition var for Transport_(city, mode)
+        transport_vars = pulp.LpVariable.dicts("Transport",
+                                            ((city, mode) for city in city_demand['City'] 
+                                            for mode in mode_data['Mode']),
+                                            lowBound=0, cat='Integer')
+        # print("transport_vars ====>",transport_vars)
+
+        weight_mapping = {1: 0.8, 2: 0.4, 3: 0.1}
+        #objective function
+        prob += pulp.lpSum([transport_vars[(city, mode)] * mode_data[mode_data['Mode'] == mode]['Capacity'].values[0] *
+                            weight_mapping[city_demand[city_demand['City'] == city]['Infection rate'].values[0]]
+                        for city in city_demand['City'] 
+                        for mode in mode_data['Mode']])
+        # print("third =====>",pulp.lpSum([transport_vars[(city, mode)] * mode_data[mode_data['Mode'] == mode]['Capacity'].values[0] *
+        #                     weight_mapping[city_demand[city_demand['City'] == city]['Infection rate'].values[0]]
+        #                 for city in city_demand['City'] 
+        #                 for mode in mode_data['Mode']]))
+    
+        #vehicle constraint
         for mode in mode_data['Mode']:
-            if pulp.value(transport_vars[(city, mode)]) and pulp.value(transport_vars[(city, mode)]) > 0:
-                doses = pulp.value(transport_vars[(city, mode)]) * mode_data[mode_data['Mode'] == mode]['Capacity'].values[0]
-                cost = doses * distance_data[distance_data['Destination'] == city][f'Cost {mode}'].values[0]
-                results.append({
-                    'City': city,
-                    'Mode': mode,
-                    'Vehicles': pulp.value(transport_vars[(city, mode)]),
-                    'Doses Delivered': doses,
-                    'Total Cost': cost
-                })
+            prob += pulp.lpSum([transport_vars[(city, mode)] 
+                                for city in city_demand['City']]) <= mode_data[mode_data['Mode'] == mode]['Number of Vehicles'].values[0]
+            # print("forth===>",pulp.lpSum([transport_vars[(city, mode)] 
+            #                     for city in city_demand['City']]) <= mode_data[mode_data['Mode'] == mode]['Number of Vehicles'].values[0])
+
+        #max tranportation limit
+        prob += pulp.lpSum([transport_vars[(city, mode)] * mode_data[mode_data['Mode'] == mode]['Capacity'].values[0]
+                                for city in city_demand['City']
+                                for mode in mode_data['Mode']]) <= max_tranport_cap
+        # print("fifth =====>",pulp.lpSum([transport_vars[(city, mode)] * mode_data[mode_data['Mode'] == mode]['Capacity'].values[0]
+        #                         for city in city_demand['City']
+        #                         for mode in mode_data['Mode']]) <= max_tranport_cap)
+    
+        #city demand constraint
+        for city in city_demand['City']:
+            prob += pulp.lpSum([transport_vars[(city, mode)] *
+                                mode_data[mode_data['Mode'] == mode]['Capacity'].values[0]
+                                    for mode in mode_data['Mode']]) <= city_demand[city_demand['City'] == city]['Doses Needed'].values[0]
+            # print(pulp.lpSum([transport_vars[(city, mode)] *
+            #                     mode_data[mode_data['Mode'] == mode]['Capacity'].values[0]
+            #                         for mode in mode_data['Mode']]) <= city_demand[city_demand['City'] == city]['Doses Needed'].values[0])
+        
+        prob.solve()
+
+        i=0
+        for city in city_demand['City']:
+            for mode in mode_data['Mode']:
+                if pulp.value(transport_vars[(city, mode)]) and pulp.value(transport_vars[(city, mode)]) > 0:
+                    doses = pulp.value(transport_vars[(city, mode)]) * mode_data[mode_data['Mode'] == mode]['Capacity'].values[0]
+                    cost = doses * distance_data[distance_data['Destination'] == city][f'Cost {mode}'].values[0]
+                    results.append({
+                        'Day': day,
+                        'City': city,
+                        'Mode': mode,
+                        'Vehicles': pulp.value(transport_vars[(city, mode)]),
+                        'Doses Delivered': doses,
+                        'Total Cost': cost
+                    })
+                    updated_df.at[i, 'Total_Vaccinated'] = updated_df.at[i, 'Total_Vaccinated']+doses
+                    updated_df.at[i, 'Uninfected'] = updated_df.at[i, 'Uninfected']-doses
+            i = i + 1
+        day = day + 1
+
+        j=0
+        for city in city_demand['City']:
+            city_demand.at[j, 'Doses Needed'] = updated_df.at[j, 'Uninfected']
+            j = j + 1
+
     return pd.DataFrame(results)
 
 # Run optimization
